@@ -11,13 +11,13 @@ def my_encrypt(message, key):
         print("Error: Key must be >= 32 bytes")
         return -1
     
-    IV = Random.new().read(const.IV_LENGTH)        #must be a multiple of 16
-    en = AES.new(key, AES.MODE_CBC, IV)            #CBC mode: each C block depends on previous M blocks
+    IV = Random.new().read(const.IV_LENGTH)          #must be a multiple of 16
+    en = AES.new(key, AES.MODE_CBC, IV)              #CBC mode: each C block depends on previous M blocks
 
     padded_msg = padder.update(message)
     padded_msg += padder.finalize()
     
-    C  = en.encrypt(padded_msg)        #AES.new creates a new cipher
+    C  = en.encrypt(padded_msg)                      #AES.new creates a new cipher
     
     return IV,C
 
@@ -26,7 +26,7 @@ def my_decrypt(enc, key):
         print("Error: Key must be >= 32 bytes")
         return -1
 
-    IV = enc[:const.IV_LENGTH]                     #IV is the first n bits
+    IV = enc[:const.IV_LENGTH]                       #IV is the first n bits
     de = AES.new(key, AES.MODE_CBC, IV)
     M  = de.decrypt(enc[const.IV_LENGTH:])
     M  = unpadder.update(M)
@@ -53,13 +53,13 @@ def file_encrypt(file_name):
     finally:
         enc_file.close()
 
-    return IV,C,key,ext.encode()                                                  #ext + key + IV + C
+    return IV,C,key,ext.encode()                                #ext + key + IV + C
         
 def file_decrypt(file_name):
     name,ext = os.path.splitext(file_name)
 
     try:
-        file = open(file_name, "rb")                           #open encoded file, get data
+        file = open(file_name, "rb")                            #open encoded file, get data
         data = file.read()
     finally:
         file.close()
@@ -71,7 +71,7 @@ def file_decrypt(file_name):
     IV, M = my_decrypt(IV+C, key)
     
     try:
-        dec_file = open("dec.txt", "wb")                       #write decoding to file
+        dec_file = open("dec.txt", "wb")                        #write decoding to file
         dec_file.write(M)           
     finally:
         dec_file.close()
