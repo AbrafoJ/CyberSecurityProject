@@ -1,0 +1,82 @@
+from Crypto.Cipher import AES
+from Crypto import Random
+from cryptography.hazmat.primitives import padding
+import os, const
+
+padder   = padding.PKCS7(const.BLOCK_SIZE).padder()
+unpadder = padding.PKCS7(const.BLOCK_SIZE).unpadder()
+
+def my_encrypt(message, key):
+    if(len(key) < const.KEY_LENGTH):
+        print("Error: Key must be >= 32 bytes")
+        return -1
+    
+    IV = Random.new().read(const.IV_LENGTH)        #must be a multiple of 16
+    en = AES.new(key, AES.MODE_CBC, IV)            #CBC mode: each C block depends on previous M blocks
+
+    padded_msg = padder.update(message)
+    padded_msg += padder.finalize()
+    
+    C  = en.encrypt(padded_msg)        #AES.new creates a new cipher
+    
+    return IV,C
+
+def my_decrypt(enc, key):
+    if(len(key) < const.KEY_LENGTH):
+        print("Error: Key must be >= 32 bytes")
+        return -1
+
+    IV = enc[:const.IV_LENGTH]                     #IV is the first n bits
+    de = AES.new(key, AES.MODE_CBC, IV)
+    M  = de.decrypt(enc[const.IV_LENGTH:])
+    M  = unpadder.update(M)
+    M += unpadder.finalize()
+    
+    return IV,M
+
+
+def file_encrypt(file_name):
+    name,ext  = os.path.splitext(file_name)
+    key       = Random.new().read(const.KEY_LENGTH)
+    
+    try:
+        file = open(file_name, "rb")
+        data = file.read()
+    finally:
+        file.close()
+
+    IV,C = my_encrypt(data, key)                                #get IV+C
+
+    try:
+        enc_file = open("enc.txt", "wb")                        #create new file, write data to it (in bytes)
+        enc_file.write(IV+key+C)
+    finally:
+        enc_file.close()
+
+    return IV,C,key,ext.encode()                                                  #ext + key + IV + C
+        
+def file_decrypt(file_name):
+    name,ext = os.path.splitext(file_name)
+
+    try:
+        file = open(file_name, "rb")                           #open encoded file, get data
+        data = file.read()
+    finally:
+        file.close()
+        
+    IV = data[:const.IV_LENGTH]
+    key = data[const.IV_LENGTH:const.IV_LENGTH+const.KEY_LENGTH]
+    C = data[const.IV_LENGTH+const.KEY_LENGTH:]
+
+    IV, M = my_decrypt(IV+C, key)
+    
+    try:
+        dec_file = open("dec.txt", "wb")                       #write decoding to file
+        dec_file.write(M)           
+    finally:
+        dec_file.close()
+    
+    return IV,C,key,ext.encode
+
+enc = file_encrypt("message.txt")
+dec = file_decrypt("enc.txt")
