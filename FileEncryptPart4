@@ -1,0 +1,76 @@
+def encrypt_all(directory, rsa_publickey_filepath):
+    file_count = 0
+    
+    for file in os.listdir(directory):
+        if not file.endswith('.pem') and not file.endswith('.py') and not file.endswith('.DS_Store') and not file.endswith('__') and not file.endswith('.json'):
+            file_path = directory + "/" + file
+            print("encrypt all filepath",file_path)
+            
+            rsa_cipher, C, IV, tag, ext = my_RSA_encrypt(file_path, rsa_publickey_filepath)
+#            print("encrypt rsa cipher: ", rsa_cipher)
+#            print("encrypt C: ", C)
+#            print("encrupt tag ", tag)
+#            print("encrypt IV: ", IV)
+        
+            ascii_rsa = base64.encodebytes(rsa_cipher).decode('ascii')
+            ascii_C   = base64.encodebytes(C).decode('ascii')
+            ascii_tag = base64.encodebytes(tag).decode('ascii')
+            ascii_iv  = base64.encodebytes(IV).decode('ascii')
+            ascii_ext = base64.encodebytes(ext).decode('ascii')
+            #JSON only supports unicode strings. Since Base64 encodes bytes to ASCII-only bytes, you can use that codec to decode the data
+
+            #json_obj = {"RSA":json_rsa, "C":json_c, "Tag":json_tag, "IV":json_iv, "Ext":json_ext}
+            json_file = json.dumps({"RSA":ascii_rsa, "C":ascii_C, "Tag":ascii_tag, "IV":ascii_iv, "Ext":ascii_ext})
+            print(json_file)
+            
+            json_path = "JSON_"+str(file_count)+".json"
+            file_count += 1
+            
+            print("encrypt all json path",json_path)
+            
+            #write json_object to file
+            json_out = open(json_path, "w") #write
+            json_out.write(json_file)
+            json_out.close()
+
+            #delete plaintext
+            #os.remove(file)    
+
+def decrypt_all(directory, rsa_privatekey_filepath):
+    file_count = 0
+    
+    for file in os.listdir(directory):
+        if file.endswith(".json"):
+            print("decrypt all file:", file)
+            
+            with open(file, 'r') as f:
+                json_data = f.read()
+                
+            print("decrypt json data:",json_data)
+            
+            json_obj = json.loads(json_data)
+                
+            print("\n\n\n")
+            rsa   = base64.decodebytes(json_obj["RSA"].encode('ascii')) 
+            print("decrypt rsa =",rsa)
+            C = base64.decodebytes(json_obj["C"].encode('ascii')) 
+            print("decrypt C =",C)
+            tag = base64.decodebytes(json_obj["Tag"].encode('ascii')) 
+            print("decrypt tag =",tag)
+            IV  = base64.decodebytes(json_obj["IV"].encode('ascii')) 
+            print("decrypt IV =",IV)
+            ext = base64.decodebytes(json_obj["Ext"].encode('ascii')) 
+            #print("ext =",ext)
+            
+            plaintext = my_RSA_decrypt(file, rsa, C, IV, tag, ext, rsa_privatekey_filepath)
+            #def my_RSA_decrypt(filepath, rsa_cipher, C, IV, hmac_tag, ext, rsa_privatekey_filepath):
+            print(plaintext)
+            
+            file_path = "FILE_" + str(file_count) + ext
+            file_count += 1
+
+            file_out = open(file_path, "wb")
+            file_out.write(plaintext)
+            file_out.close()
+
+            os.remove(file)
