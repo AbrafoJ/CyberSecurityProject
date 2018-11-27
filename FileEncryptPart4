@@ -186,7 +186,7 @@ def encrypt_all(directory, rsa_publickey_filepath):
             ascii_ext = base64.encodebytes(ext).decode('ascii')
             #JSON only supports unicode strings. Since Base64 encodes bytes to ASCII-only bytes, you can use that codec to decode the data
 
-            #json_obj = {"RSA":json_rsa, "C":json_c, "Tag":json_tag, "IV":json_iv, "Ext":json_ext}
+            #json_obj = {"RSA":ascii_rsa, "C":ascii_C, "Tag":ascii_tag, "IV":ascii_iv, "Ext":ascii_ext}
             json_file = json.dumps({"RSA":ascii_rsa, "C":ascii_C, "Tag":ascii_tag, "IV":ascii_iv, "Ext":ascii_ext})
             print(json_file)
             
