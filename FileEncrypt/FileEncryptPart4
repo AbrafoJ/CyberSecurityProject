@@ -1,0 +1,243 @@
+import os, const, json, base64
+from   cryptography.hazmat.primitives.asymmetric import rsa
+from   cryptography.hazmat.primitives.asymmetric import padding as rsa_pad
+from   cryptography.hazmat.primitives.ciphers    import Cipher, algorithms, modes
+from   cryptography.hazmat.primitives            import padding, hashes, hmac, serialization
+from   cryptography.hazmat.backends              import default_backend
+
+##############################################################################################################
+def my_encrypt_hmac(message, enc_key, hmac_key):
+    if(len(enc_key) < const.KEY_LENGTH):
+        print("Error: Key must be 128 bytes")
+        return -1
+    
+    #pad message
+    padder     = padding.PKCS7(const.BLOCK_SIZE).padder()
+    padded_msg = padder.update(message) + padder.finalize()
+    
+    #generate IV
+    IV = os.urandom(const.IV_LENGTH)            
+    
+    #create cipher with key + IV
+    cipher = Cipher(algorithms.AES(enc_key), modes.CBC(IV), backend=default_backend())
+    encryptor = cipher.encryptor()
+    cipher_text = encryptor.update(padded_msg) + encryptor.finalize()
+    
+    #create tag
+    hmac_tag = hmac.HMAC(hmac_key, hashes.SHA256(), backend=default_backend()) 
+    hmac_tag.update(cipher_text) #hashes the cipher_text                        # M ( Ko || M ) ( Ki || M )
+    
+    return cipher_text, IV, hmac_tag.finalize()
+    
+##############################################################################################################
+def my_decrypt_hmac(cipher_text, IV, enc_key, hmac_key, hmac_tag):
+    decrypt_tag = hmac.HMAC(hmac_key, hashes.SHA256(), backend=default_backend())
+    decrypt_tag.update(cipher_text)
+    
+    #check if cipher is good
+    decrypt_tag.verify(hmac_tag)
+    
+    #create cipher with key + IV
+    cipher = Cipher(algorithms.AES(enc_key), modes.CBC(IV), backend=default_backend())
+    decryptor = cipher.decryptor()
+    cipher_text = decryptor.update(cipher_text) + decryptor.finalize()
+    
+    #unpad
+    unpadder = padding.PKCS7(const.BLOCK_SIZE).unpadder()
+    plain_text = unpadder.update(cipher_text) + unpadder.finalize() 
+
+    return plain_text
+
+##############################################################################################################
+def file_encrypt_hmac(filepath):
+    file_name = os.path.basename(filepath)
+    name,ext = os.path.splitext(file_name)
+    enc_key  = os.urandom(const.KEY_LENGTH) 
+    hmac_key = os.urandom(const.KEY_LENGTH) 
+    
+    #print("file name = ",file_name)
+    #print("file path = ",filepath)
+    #print("name = ",name)
+    #print("ext = ", ext)    
+        
+    with open(file_name, "rb") as f:
+        file_in = f.read()
+
+    C, IV, tag = my_encrypt_hmac(file_in , enc_key, hmac_key)
+    
+    with open(file_name, "wb") as f:
+        f.write(C)
+        
+    return C, IV, tag, enc_key, hmac_key, ext.encode()
+    
+##############################################################################################################
+def file_decrypt_hmac(filepath, IV, enc_key, hmac_key, tag):
+    file_name = os.path.basename(filepath)
+    name,ext = os.path.splitext(file_name)
+    
+    print("file decrypt: filepath =", filepath)
+    print("file decrypt: file_name =", file_name)
+    
+
+    with open(file_name, "rb") as f:
+        enc = f.read()
+        
+    M = my_decrypt_hmac(enc, IV, enc_key, hmac_key, tag)
+    print("file decrypt: M =", M)
+    
+    with open(file_name, "wb") as f:
+        print("file decrypt: writing back to file")
+        f.write(M)
+    
+    return M
+
+##############################################################################################################
+def generate_keys(filepath):
+    file = os.path.basename(filepath)
+
+    if os.path.isfile(filepath):
+        print("file exists: ",file)
+        
+        pem_file = open(file, "r")
+        header = pem_file.read()
+        pem_file.close()
+
+        if "-----BEGIN RSA PRIVATE KEY-----" in header:
+            private_pem = filepath #concat path and filename
+            print("Private: ",private_pem)
+
+        elif "-----BEGIN PUBLIC KEY-----" in header:
+            public_pem = filepath
+            print("Public: ",public_pem)
+        
+    else:
+        print("does not exist")
+        private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048, backend=default_backend())
+        #highest known prime, largest fermat number, large enough to avoid attacks to which RSA is vulnerable within small exponents
+        public_key = private_key.public_key()
+        
+        with open(file, 'wb') as priv_pem_file:
+            priv_pem_file.write(private_key.private_bytes( encoding=serialization.Encoding.PEM, 
+                                                            format=serialization.PrivateFormat.TraditionalOpenSSL,
+                                                            encryption_algorithm = serialization.NoEncryption()))
+            
+        private_key_path = os.path.dirname(os.path.realpath(filepath))+"/"+priv_pem_file.name
+        print(private_key_path)
+        
+        with open("public"+file, 'wb') as pub_pem_file:
+            pub_pem_file.write(public_key.public_bytes( encoding=serialization.Encoding.PEM,
+                                                        format=serialization.PublicFormat.SubjectPublicKeyInfo))
+            
+        public_key_path = os.path.dirname(os.path.realpath(filepath))+"/"+pub_pem_file.name
+        print(public_key_path)
+            
+        return private_key_path, public_key_path
+    
+##############################################################################################################
+def my_RSA_encrypt(filepath, rsa_publickey_filepath):
+    C, IV, tag, enc_key, hmac_key, ext = file_encrypt_hmac(filepath)
+
+    with open(rsa_publickey_filepath, 'rb') as pub_pem_file:
+        public_key = serialization.load_pem_public_key(pub_pem_file.read(),
+                                                       backend=default_backend())
+        
+    rsa_cipher = public_key.encrypt(enc_key+hmac_key,
+                                    rsa_pad.OAEP(mgf=rsa_pad.MGF1(algorithm=hashes.SHA256()), 
+                                                 algorithm=hashes.SHA256(), 
+                                                 label=None))
+    return rsa_cipher, C, IV, tag, ext
+
+def my_RSA_decrypt(filepath, rsa_cipher, C, IV, hmac_tag, ext, rsa_privatekey_filepath):
+    print("my RSA decrypt: filepath =", filepath)
+    with open(rsa_privatekey_filepath, 'rb') as priv_pem_file:
+        private_key = serialization.load_pem_private_key(priv_pem_file.read(),
+                                                         password=None,
+                                                         backend=default_backend())
+        
+    dec_keys = private_key.decrypt(rsa_cipher, rsa_pad.OAEP(mgf=rsa_pad.MGF1(algorithm=hashes.SHA256()),
+                                                            algorithm=hashes.SHA256(),
+                                                            label=None))
+    dec_enc_key = dec_keys[:const.KEY_LENGTH]
+    dec_hmac_key = dec_keys[const.KEY_LENGTH:]
+    
+    M = file_decrypt_hmac(filepath, IV, dec_enc_key, dec_hmac_key, hmac_tag)
+    
+    return M
+
+##############################################################################################################
+def encrypt_all(directory, rsa_publickey_filepath):
+    file_count = 0
+    
+    for file in os.listdir(directory):
+        if not file.endswith('.pem') and not file.endswith('.py') and not file.endswith('.DS_Store') and not file.endswith('__') and not file.endswith('.json'):
+            file_path = directory + "/" + file
+            print("encrypt all filepath",file_path)
+            
+            rsa_cipher, C, IV, tag, ext = my_RSA_encrypt(file_path, rsa_publickey_filepath)
+#            print("encrypt rsa cipher: ", rsa_cipher)
+#            print("encrypt C: ", C)
+#            print("encrupt tag ", tag)
+#            print("encrypt IV: ", IV)
+        
+            ascii_rsa = base64.encodebytes(rsa_cipher).decode('ascii')
+            ascii_C   = base64.encodebytes(C).decode('ascii')
+            ascii_tag = base64.encodebytes(tag).decode('ascii')
+            ascii_iv  = base64.encodebytes(IV).decode('ascii')
+            ascii_ext = base64.encodebytes(ext).decode('ascii')
+            #JSON only supports unicode strings. Since Base64 encodes bytes to ASCII-only bytes, you can use that codec to decode the data
+
+            json_file = json.dumps({"RSA":ascii_rsa, "C":ascii_C, "Tag":ascii_tag, "IV":ascii_iv, "Ext":ascii_ext})
+            print(json_file)
+            
+            json_path = "JSON_"+str(file_count)+".json"
+            file_count += 1
+            
+            print("encrypt all json path",json_path)
+            
+            #write json_object to file
+            json_out = open(json_path, "w") #write
+            json_out.write(json_file)
+            json_out.close()
+
+            #delete plaintext
+            #os.remove(file) 
+            
+##############################################################################################################
+def decrypt_all(directory, rsa_privatekey_filepath):
+    file_count = 0
+    
+    for file in os.listdir(directory):
+        if file.endswith(".json"):
+            print("decrypt all file:", file)
+            
+            with open(file, 'r') as f:
+                json_data = f.read()
+                
+            print("decrypt json data:",json_data)
+            
+            json_obj = json.loads(json_data)
+                
+            print("\n\n\n")
+            rsa   = base64.decodebytes(json_obj["RSA"].encode('ascii')) 
+            print("decrypt rsa =",rsa)
+            C = base64.decodebytes(json_obj["C"].encode('ascii')) 
+            print("decrypt C =",C)
+            tag = base64.decodebytes(json_obj["Tag"].encode('ascii')) 
+            print("decrypt tag =",tag)
+            IV  = base64.decodebytes(json_obj["IV"].encode('ascii')) 
+            print("decrypt IV =",IV)
+            ext = base64.decodebytes(json_obj["Ext"].encode('ascii')) 
+            #print("ext =",ext)
+            
+            plaintext = my_RSA_decrypt(file, rsa, C, IV, tag, ext, rsa_privatekey_filepath)
+            #def my_RSA_decrypt(filepath, rsa_cipher, C, IV, hmac_tag, ext, rsa_privatekey_filepath):
+            print(plaintext)
+            
+            file_path = "FILE_" + str(file_count) + ext
+            file_count += 1
+
+            file_out = open(file_path, "wb")
+            file_out.write(plaintext)
+            file_out.close()
+
+            os.remove(file)
