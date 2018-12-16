@@ -161,11 +161,11 @@ def my_RSA_decrypt(filepath, rsa_cipher, C, IV, hmac_tag, ext, rsa_privatekey_fi
     
     return M
 
-public_key_path = "/Users/flo/.spyder-py3/378_FileEnc/378_FileEnc/public.pem"
-private_key_path = "/Users/flo/.spyder-py3/378_FileEnc/378_FileEnc/private.pem"
+public_key_path = "/Users/Otter/Desktop/CECS378/TeamCersei/public.pem"
+private_key_path = "/Users/Otter/Desktop/CECS378/TeamCersei/private.pem"
 
-plaintext_filepath = "/Users/flo/.spyder-py3/378_FileEnc/378_FileEnc/message.txt"
-ciphertext_filepath = "/Users/flo/.spyder-py3/378_FileEnc/378_FileEnc/enc.txt"
+plaintext_filepath = "/Users/Otter/Desktop/CECS378/TeamCersei/message.txt"
+ciphertext_filepath = "/Users/Otter/Desktop/CECS378/TeamCersei/enc.txt"
 
 rsa_cipher, C, IV, tag, ext = my_RSA_encrypt(plaintext_filepath, public_key_path)
-M                           = my_RSA_decrypt(ciphertext_filepath, rsa_cipher, C, IV, tag, ext, private_key_path)
+#M                           = my_RSA_decrypt(ciphertext_filepath, rsa_cipher, C, IV, tag, ext, private_key_path)
